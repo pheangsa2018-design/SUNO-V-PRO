@@ -1,0 +1,8 @@
+{
+  "name": "Remix Remix Remix Remix Remix Remix Remix Suno MP3 \u0026 WAV Downloader",
+  "description": "ទាញយកបទចម្រៀង ឬ Playlist ទាំងមូលពី Suno ជាទម្រង់ MP3 និង WAV កម្រិតគុណភាពខ្ពស់ ជាមួយកម្មវិធីចាក់ស្តាប់ ឧបករណ៍វិភាគរលកសម្លេង Waveform និងមើលទំនុកច្រៀង",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}

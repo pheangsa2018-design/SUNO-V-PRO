@@ -1,0 +1,105 @@
+<!doctype html>
+<html lang="km">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Remix Remix Suno MP3 & WAV Downloader</title>
+    <meta name="description" content="ទាញយកបទចម្រៀង ឬ Playlist ទាំងមូលពី Suno ជាទម្រង់ MP3 និង WAV កម្រិតគុណភាពខ្ពស់ ជាមួយកម្មវិធីចាក់ស្តាប់ ឧបករណ៍វិភាគរលកសម្លេង Waveform និងមើលទំនុកច្រៀង" />
+    <meta property="og:title" content="Remix Remix Suno MP3 & WAV Downloader" />
+    <meta property="og:description" content="ទាញយកបទចម្រៀង ឬ Playlist ទាំងមូលពី Suno ជាទម្រង់ MP3 និង WAV កម្រិតគុណភាពខ្ពស់ ជាមួយកម្មវិធីចាក់ស្តាប់ ឧបករណ៍វិភាគរលកសម្លេង Waveform និងមើលទំនុកច្រៀង" />
+    <meta property="og:type" content="website" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Kantumruy+Pro:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+    <script>
+      (function() {
+        try {
+          if (typeof Node !== 'undefined' && Node.prototype && !Node.prototype.toJSON) {
+            Object.defineProperty(Node.prototype, 'toJSON', {
+              value: function () {
+                return {
+                  nodeType: this.nodeType,
+                  nodeName: this.nodeName,
+                  id: this.id || undefined,
+                  className: typeof this.className === 'string' ? this.className : undefined
+                };
+              },
+              configurable: true,
+              writable: true
+            });
+          }
+          if (typeof HTMLAudioElement !== 'undefined' && HTMLAudioElement.prototype && !HTMLAudioElement.prototype.toJSON) {
+            Object.defineProperty(HTMLAudioElement.prototype, 'toJSON', {
+              value: function () {
+                return {
+                  tagName: 'AUDIO',
+                  id: this.id || undefined,
+                  src: this.src || undefined,
+                  currentTime: this.currentTime || 0,
+                  duration: this.duration || 0,
+                  paused: this.paused !== false
+                };
+              },
+              configurable: true,
+              writable: true
+            });
+          }
+          if (typeof Event !== 'undefined' && Event.prototype && !Event.prototype.toJSON) {
+            Object.defineProperty(Event.prototype, 'toJSON', {
+              value: function () {
+                return {
+                  type: this.type,
+                  defaultPrevented: this.defaultPrevented,
+                  timeStamp: this.timeStamp
+                };
+              },
+              configurable: true,
+              writable: true
+            });
+          }
+          var origStringify = JSON.stringify;
+          JSON.stringify = function (val, replacer, space) {
+            try {
+              return origStringify.call(this, val, replacer, space);
+            } catch (err) {
+              if (err && typeof err.message === 'string' && (err.message.indexOf('circular') !== -1 || err.message.indexOf('cyclic') !== -1)) {
+                var seen = new WeakSet();
+                try {
+                  return origStringify.call(
+                    this,
+                    val,
+                    function (key, value) {
+                      if (typeof value === 'object' && value !== null) {
+                        if (value instanceof Node || value instanceof Window || 'nodeType' in value || (value.constructor && (value.constructor.name === 'HTMLAudioElement' || value.constructor.name === 'FiberNode'))) {
+                          return undefined;
+                        }
+                        if (seen.has(value)) {
+                          return undefined;
+                        }
+                        seen.add(value);
+                      }
+                      if (typeof replacer === 'function') {
+                        return replacer(key, value);
+                      }
+                      return value;
+                    },
+                    space
+                  );
+                } catch (e2) {
+                  return 'null';
+                }
+              }
+              throw err;
+            }
+          };
+        } catch (e) {}
+      })();
+    </script>
+  </head>
+  <body class="bg-neutral-950 text-neutral-100 antialiased selection:bg-amber-500 selection:text-neutral-950 min-h-screen">
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>
+
