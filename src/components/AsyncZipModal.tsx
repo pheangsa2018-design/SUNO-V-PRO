@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import {
   FolderArchive,
   Disc3,
@@ -15,6 +15,7 @@ import {
 import type { AsyncZipJobStatus, AudioFormat } from '../types.js';
 import type { Language } from '../i18n.js';
 import { translations } from '../i18n.js';
+import { calculateRemainingTime } from '../utils/timeEstimator.js';
 
 interface AsyncZipModalProps {
   isOpen: boolean;
@@ -43,6 +44,26 @@ export const AsyncZipModal: React.FC<AsyncZipModalProps> = ({
   const isReady = job?.status === 'ready';
   const isError = job?.status === 'error';
   const isCancelled = job?.status === 'cancelled';
+
+  const [jobStartTime, setJobStartTime] = useState<number | null>(null);
+  const [, setTick] = useState(0);
+
+  useEffect(() => {
+    if (isProcessing) {
+      if (!jobStartTime) {
+        setJobStartTime(Date.now());
+      }
+      const timer = setInterval(() => setTick((t) => t + 1), 1000);
+      return () => clearInterval(timer);
+    } else {
+      setJobStartTime(null);
+    }
+  }, [isProcessing]);
+
+  const remainingTimeStr = useMemo(() => {
+    if (!isProcessing || !jobStartTime) return null;
+    return calculateRemainingTime(jobStartTime, job?.percent ?? 0, translations[lang], lang);
+  }, [isProcessing, jobStartTime, job?.percent, lang]);
 
   React.useEffect(() => {
     if (!isOpen) return;
@@ -145,14 +166,20 @@ export const AsyncZipModal: React.FC<AsyncZipModalProps> = ({
                 </div>
               </div>
 
-              <div className="text-right shrink-0">
-                <span className="text-2xl font-black text-amber-400 font-mono">
+              <div className="text-right shrink-0 flex flex-col items-end">
+                <span className="text-2xl font-black text-amber-400 font-mono leading-none">
                   {job?.percent ?? 0}%
                 </span>
+                {remainingTimeStr && (
+                  <span className="text-[10px] font-mono text-amber-300/90 flex items-center gap-1 mt-1 bg-amber-500/10 px-2 py-0.5 rounded border border-amber-500/20">
+                    <Clock className="w-3 h-3 text-amber-400 animate-pulse shrink-0" />
+                    <span>{remainingTimeStr}</span>
+                  </span>
+                )}
               </div>
             </div>
 
-            {/* Progress Bar */}
+            {/* Progress Bar Container with Live ETA */}
             <div className="space-y-2">
               <div className="flex justify-between items-center text-xs">
                 <span className="text-neutral-400 font-medium">
@@ -175,12 +202,35 @@ export const AsyncZipModal: React.FC<AsyncZipModalProps> = ({
                 </span>
               </div>
 
-              <div className="w-full bg-neutral-800 rounded-full h-2.5 overflow-hidden p-0.5 border border-neutral-700/50">
+              <div className="w-full bg-neutral-950 rounded-full h-3 overflow-hidden p-0.5 border border-neutral-700/60 shadow-inner">
                 <div
+                  id="async-zip-progress-bar-fill"
+                  role="progressbar"
+                  aria-valuenow={job?.percent ?? 0}
+                  aria-valuemin={0}
+                  aria-valuemax={100}
                   className="bg-gradient-to-r from-amber-500 via-orange-500 to-amber-400 h-full rounded-full transition-all duration-300 shadow-sm shadow-amber-500/50"
                   style={{ width: `${Math.max(job?.percent ?? 0, 4)}%` }}
                 />
               </div>
+
+              {/* Remaining Time Badge */}
+              {remainingTimeStr && (
+                <div
+                  id="async-zip-remaining-time-badge"
+                  className="flex items-center justify-between text-xs pt-0.5"
+                >
+                  <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-lg bg-amber-500/15 text-amber-300 border border-amber-500/30 text-[11px] font-mono font-medium shadow-sm">
+                    <Clock className="w-3.5 h-3.5 text-amber-400 animate-pulse shrink-0" />
+                    <span>
+                      <strong className="text-neutral-400 font-sans text-[10px] mr-1">
+                        {t.remainingTime || (lang === 'km' ? 'ពេលវេលានៅសល់:' : 'Remaining Time:')}:
+                      </strong>
+                      {remainingTimeStr}
+                    </span>
+                  </span>
+                </div>
+              )}
             </div>
 
             {/* Current Song Details */}

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import {
   Download,
   Music,
@@ -21,7 +21,11 @@ import {
   Heart,
   FolderArchive,
   Loader2,
-  AlertCircle
+  AlertCircle,
+  ChevronDown,
+  ChevronUp,
+  Search,
+  AlignLeft
 } from 'lucide-react';
 import type { SongInfo, AudioFormat, FavoriteSongItem } from '../types.js';
 import type { Language } from '../i18n.js';
@@ -61,6 +65,7 @@ export const SongCard: React.FC<SongCardProps> = ({
   const t = translations[lang];
   const [activeTab, setActiveTab] = useState<'lyrics' | 'tags' | 'tech'>('lyrics');
   const [copied, setCopied] = useState(false);
+  const [downloadedLyrics, setDownloadedLyrics] = useState(false);
   const [downloadingFormat, setDownloadingFormat] = useState<AudioFormat | null>(null);
   const [downloadProgress, setDownloadProgress] = useState<number | null>(null);
   const [downloadStatusText, setDownloadStatusText] = useState<string | null>(null);
@@ -76,10 +81,32 @@ export const SongCard: React.FC<SongCardProps> = ({
   const [playbackTime, setPlaybackTime] = useState(0);
   const [playbackDuration, setPlaybackDuration] = useState(song.duration || 0);
 
-  // Reset playback time when song changes
+  // Expandable lyrics container state in song details
+  const [isLyricsExpanded, setIsLyricsExpanded] = useState(false);
+  const [lyricsSearch, setLyricsSearch] = useState('');
+  const [lyricsViewMode, setLyricsViewMode] = useState<'formatted' | 'raw'>('formatted');
+
+  // Parse prompt into clean lines
+  const lyricLines = useMemo(() => {
+    if (!song.prompt || typeof song.prompt !== 'string') return [];
+    return song.prompt
+      .split(/\r?\n/)
+      .map((l) => l.trim())
+      .filter((l) => l.length > 0);
+  }, [song.prompt]);
+
+  // Filter lines by search term if active
+  const filteredLyricLines = useMemo(() => {
+    if (!lyricsSearch.trim()) return lyricLines;
+    const q = lyricsSearch.toLowerCase();
+    return lyricLines.filter((line) => line.toLowerCase().includes(q));
+  }, [lyricLines, lyricsSearch]);
+
+  // Reset playback time and lyrics search when song changes
   useEffect(() => {
     setPlaybackTime(0);
     setPlaybackDuration(song.duration || 0);
+    setLyricsSearch('');
   }, [song.id, song.duration]);
 
   // Synchronize playback progress when testing WAV audio
@@ -374,6 +401,56 @@ export const SongCard: React.FC<SongCardProps> = ({
     return `${m}:${s.toString().padStart(2, '0')}`;
   };
 
+  const handleDownloadLyrics = useCallback(() => {
+    if (!song.prompt && !song.title) return;
+
+    const cleanTitle = (song.title || 'Suno_Song')
+      .replace(/[:]/g, ' - ')
+      .replace(/[<>"/\\|?*\x00-\x1F]/g, '_')
+      .replace(/\s+/g, ' ')
+      .trim();
+    const artist = (song.displayName || song.handle || 'Suno')
+      .replace(/[:]/g, ' - ')
+      .replace(/[<>"/\\|?*\x00-\x1F]/g, '_')
+      .replace(/\s+/g, ' ')
+      .trim();
+
+    const formattedDuration = song.duration ? formatDuration(song.duration) : null;
+
+    // Format clean lyrics document with comprehensive track info header
+    const lines = [
+      `TITLE: ${song.title || 'Untitled'}`,
+      `ARTIST: ${song.displayName || 'Unknown'} (@${song.handle || 'anonymous'})`,
+      formattedDuration ? `DURATION: ${formattedDuration}` : null,
+      song.tags ? `GENRE / STYLE: ${song.tags}` : null,
+      song.modelName ? `AI MODEL: ${song.modelName}` : null,
+      `GENERATED VIA: Suno AI`,
+      `SOURCE URL: ${song.sourceUrl || `https://suno.com/song/${song.id}`}`,
+      `DOWNLOAD DATE: ${new Date().toLocaleDateString()}`,
+      `==================================================`,
+      `LYRICS / PROMPT:`,
+      `==================================================`,
+      '',
+      song.prompt || '(No lyrics provided for this track)',
+      ''
+    ]
+      .filter((line) => line !== null)
+      .join('\n');
+
+    const blob = new Blob([lines], { type: 'text/plain;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `${cleanTitle} - ${artist} - Lyrics.txt`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+
+    setDownloadedLyrics(true);
+    setTimeout(() => setDownloadedLyrics(false), 2500);
+  }, [song]);
+
   return (
     <div className="w-full max-w-4xl mx-auto space-y-4">
       {onBackToPlaylist && (
@@ -563,6 +640,255 @@ export const SongCard: React.FC<SongCardProps> = ({
             if (dur > 0) setPlaybackDuration(dur);
           }}
         />
+      </div>
+
+      {/* Expandable Song Lyrics Container */}
+      <div
+        id="song-details-expandable-lyrics"
+        className="mt-6 bg-neutral-950/80 border border-neutral-800/80 rounded-2xl p-4 sm:p-5 transition-all shadow-lg"
+      >
+        {/* Header & Controls Bar */}
+        <div className="flex flex-wrap items-center justify-between gap-3 pb-3 border-b border-neutral-800/80">
+          <div className="flex items-center gap-2.5">
+            <div className="p-2 rounded-xl bg-amber-500/10 border border-amber-500/20 text-amber-400">
+              <FileText className="w-4 h-4" />
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <h3 className="text-sm font-bold text-white tracking-tight">
+                  {t.lyricsTitle}
+                </h3>
+                {lyricLines.length > 0 && (
+                  <span className="px-2 py-0.5 rounded-full bg-amber-500/15 border border-amber-500/30 text-amber-300 text-[10px] font-mono font-medium">
+                    {t.linesCount.replace('{count}', String(lyricLines.length))}
+                  </span>
+                )}
+              </div>
+              <p className="text-[11px] text-neutral-400">
+                {lang === 'km'
+                  ? 'មើលទំនុកច្រៀងផ្ទាល់នៅលើអេក្រង់ដោយមិនបាច់ទាញយក file .txt'
+                  : 'Read song lyrics directly on screen without downloading a .txt file'}
+              </p>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2 flex-wrap">
+            {/* 1-Click Copy Lyrics Button */}
+            {song.prompt && (
+              <button
+                type="button"
+                id="copy-lyrics-ui-btn"
+                onClick={handleCopyLyrics}
+                className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold transition-all border cursor-pointer ${
+                  copied
+                    ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40 shadow-sm'
+                    : 'bg-neutral-900 hover:bg-neutral-850 text-neutral-300 hover:text-white border-neutral-700/80 hover:border-amber-500/40'
+                }`}
+                title={t.copyLyrics}
+              >
+                {copied ? (
+                  <>
+                    <Check className="w-3.5 h-3.5 text-emerald-400" />
+                    <span className="text-emerald-300 font-bold">{t.lyricsCopied}</span>
+                  </>
+                ) : (
+                  <>
+                    <Copy className="w-3.5 h-3.5 text-amber-400" />
+                    <span>{t.copyLyrics}</span>
+                  </>
+                )}
+              </button>
+            )}
+
+            {/* Expand / Collapse Toggle Button */}
+            {lyricLines.length > 0 && (
+              <button
+                type="button"
+                id="toggle-expand-lyrics-btn"
+                onClick={() => setIsLyricsExpanded((prev) => !prev)}
+                className={`inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer border ${
+                  isLyricsExpanded
+                    ? 'bg-amber-500 text-neutral-950 border-amber-400 shadow-md shadow-amber-500/20'
+                    : 'bg-neutral-900 hover:bg-neutral-800 text-amber-300 hover:text-amber-200 border-amber-500/40'
+                }`}
+                title={isLyricsExpanded ? t.collapseLyrics : t.expandLyrics}
+              >
+                {isLyricsExpanded ? (
+                  <>
+                    <ChevronUp className="w-4 h-4 stroke-[2.5]" />
+                    <span>{t.collapseLyrics}</span>
+                  </>
+                ) : (
+                  <>
+                    <ChevronDown className="w-4 h-4 stroke-[2.5]" />
+                    <span>{t.showFullLyrics}</span>
+                  </>
+                )}
+              </button>
+            )}
+          </div>
+        </div>
+
+        {/* Lyrics Content: Collapsed Preview vs Expanded Full View */}
+        {lyricLines.length === 0 ? (
+          <div className="py-6 text-center text-neutral-500 italic text-xs">
+            <FileText className="w-6 h-6 mx-auto mb-2 opacity-40 text-neutral-600" />
+            <p>{t.noLyrics || 'No lyrics provided for this track.'}</p>
+          </div>
+        ) : !isLyricsExpanded ? (
+          /* Collapsed Preview State */
+          <div className="pt-3">
+            <div className="relative max-h-24 overflow-hidden rounded-xl bg-neutral-900/40 p-3 border border-neutral-800/60">
+              <div className="space-y-1.5 opacity-80">
+                {lyricLines.slice(0, 3).map((line, idx) => {
+                  const isHeader = /^\[.*\]$/.test(line) || /^\(.*\)$/.test(line);
+                  return (
+                    <p
+                      key={idx}
+                      className={`text-xs sm:text-sm truncate font-sans ${
+                        isHeader ? 'text-amber-400 font-semibold uppercase' : 'text-neutral-300'
+                      }`}
+                    >
+                      {line}
+                    </p>
+                  );
+                })}
+              </div>
+              {/* Fade gradient mask */}
+              <div className="absolute inset-0 bg-gradient-to-b from-transparent via-neutral-950/60 to-neutral-950 flex items-end justify-center pb-1">
+                <button
+                  type="button"
+                  id="expand-lyrics-preview-link-btn"
+                  onClick={() => setIsLyricsExpanded(true)}
+                  className="inline-flex items-center gap-1 text-[11px] font-bold text-amber-400 hover:text-amber-300 bg-neutral-900/90 hover:bg-neutral-800 px-3 py-1 rounded-full border border-amber-500/30 transition-all cursor-pointer shadow-md"
+                >
+                  <ChevronDown className="w-3.5 h-3.5 animate-bounce" />
+                  <span>
+                    {t.showFullLyrics} ({lyricLines.length} {lang === 'km' ? 'ឃ្លា' : 'lines'})
+                  </span>
+                </button>
+              </div>
+            </div>
+          </div>
+        ) : (
+          /* Expanded Full Lyrics State */
+          <div className="pt-3 space-y-3 animate-in fade-in duration-200">
+            {/* Secondary Toolbar: Search Filter & Formatted / Raw View Toggle */}
+            <div className="flex flex-wrap items-center justify-between gap-2.5">
+              {/* Search Inside Lyrics */}
+              <div className="relative flex-1 min-w-[200px] max-w-sm">
+                <Search className="w-3.5 h-3.5 text-neutral-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+                <input
+                  type="text"
+                  id="lyrics-search-input"
+                  value={lyricsSearch}
+                  onChange={(e) => setLyricsSearch(e.target.value)}
+                  placeholder={t.searchLyricsPlaceholder}
+                  className="w-full pl-8 pr-3 py-1.5 rounded-xl bg-neutral-900/90 border border-neutral-700/80 text-xs text-white placeholder-neutral-500 focus:outline-none focus:border-amber-400 transition-colors"
+                />
+                {lyricsSearch && (
+                  <button
+                    type="button"
+                    onClick={() => setLyricsSearch('')}
+                    className="absolute right-2.5 top-1/2 -translate-y-1/2 text-neutral-400 hover:text-white text-xs"
+                  >
+                    ×
+                  </button>
+                )}
+              </div>
+
+              {/* View Mode Toggle: Formatted vs Raw Prompt */}
+              <div className="flex items-center gap-1 p-0.5 rounded-xl bg-neutral-900 border border-neutral-800">
+                <button
+                  type="button"
+                  id="view-formatted-lyrics-btn"
+                  onClick={() => setLyricsViewMode('formatted')}
+                  className={`px-2.5 py-1 rounded-lg text-[11px] font-semibold transition-all cursor-pointer ${
+                    lyricsViewMode === 'formatted'
+                      ? 'bg-amber-500 text-neutral-950 shadow-sm'
+                      : 'text-neutral-400 hover:text-white'
+                  }`}
+                >
+                  {t.viewFormattedLyrics}
+                </button>
+                <button
+                  type="button"
+                  id="view-raw-lyrics-btn"
+                  onClick={() => setLyricsViewMode('raw')}
+                  className={`px-2.5 py-1 rounded-lg text-[11px] font-semibold transition-all cursor-pointer ${
+                    lyricsViewMode === 'raw'
+                      ? 'bg-amber-500 text-neutral-950 shadow-sm'
+                      : 'text-neutral-400 hover:text-white'
+                  }`}
+                >
+                  {t.viewRawLyrics}
+                </button>
+              </div>
+            </div>
+
+            {/* Scrollable Lyrics Container */}
+            <div className="max-h-[420px] overflow-y-auto pr-2 rounded-2xl bg-neutral-900/60 border border-neutral-800/80 p-4 space-y-1.5 scroll-smooth custom-scrollbar">
+              {lyricsViewMode === 'raw' ? (
+                <pre className="text-xs sm:text-sm text-neutral-300 font-mono whitespace-pre-wrap leading-relaxed select-text">
+                  {song.prompt}
+                </pre>
+              ) : filteredLyricLines.length === 0 ? (
+                <div className="py-8 text-center text-neutral-500 text-xs italic">
+                  {t.noLyricsFoundQuery}
+                </div>
+              ) : (
+                filteredLyricLines.map((line, idx) => {
+                  const isSectionHeader = /^\[.*\]$/.test(line) || /^\(.*\)$/.test(line);
+
+                  if (isSectionHeader) {
+                    return (
+                      <div key={idx} className="pt-3 pb-1 first:pt-0">
+                        <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-lg bg-amber-500/15 border border-amber-500/30 text-amber-300 font-mono text-[11px] font-bold uppercase tracking-wider">
+                          <Sparkles className="w-3 h-3 text-amber-400" />
+                          <span>{line.replace(/^\[|\]$|^\(|\)$/g, '')}</span>
+                        </span>
+                      </div>
+                    );
+                  }
+
+                  const isSearchMatch = lyricsSearch.trim() && line.toLowerCase().includes(lyricsSearch.toLowerCase());
+
+                  return (
+                    <div
+                      key={idx}
+                      className={`flex items-start gap-3 py-1 px-2 rounded-lg transition-colors group ${
+                        isSearchMatch ? 'bg-amber-500/20 text-amber-200' : 'hover:bg-neutral-800/40 text-neutral-200'
+                      }`}
+                    >
+                      <span className="w-7 text-[10px] font-mono text-neutral-600 group-hover:text-neutral-400 select-none text-right shrink-0 pt-0.5">
+                        {idx + 1}
+                      </span>
+                      <p className="text-xs sm:text-sm font-sans leading-relaxed break-words select-text">
+                        {line}
+                      </p>
+                    </div>
+                  );
+                })
+              )}
+            </div>
+
+            {/* Bottom Footer Ribbon with Collapse Action */}
+            <div className="flex items-center justify-between pt-1">
+              <span className="text-[11px] font-mono text-neutral-500">
+                {filteredLyricLines.length} {lang === 'km' ? 'ឃ្លាសរុប' : 'total lines'} • {song.title}
+              </span>
+              <button
+                type="button"
+                id="collapse-lyrics-bottom-btn"
+                onClick={() => setIsLyricsExpanded(false)}
+                className="inline-flex items-center gap-1 text-xs font-semibold text-neutral-400 hover:text-amber-300 transition-colors cursor-pointer py-1 px-2 rounded-lg hover:bg-neutral-800"
+              >
+                <ChevronUp className="w-3.5 h-3.5" />
+                <span>{t.collapseLyrics}</span>
+              </button>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* High-Impact Download Action Cards */}
@@ -881,45 +1207,74 @@ export const SongCard: React.FC<SongCardProps> = ({
 
       {/* Collapsible Tabs for Lyrics, Tags, & Technical Decryption Info */}
       <div className="mt-8 pt-6 border-t border-neutral-800">
-        <div className="flex items-center gap-2 border-b border-neutral-800 pb-3 mb-4 overflow-x-auto">
-          <button
-            id="tab-lyrics-btn"
-            onClick={() => setActiveTab('lyrics')}
-            className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs sm:text-sm font-medium transition-all ${
-              activeTab === 'lyrics'
-                ? 'bg-amber-500/10 text-amber-400 border border-amber-500/20'
-                : 'text-neutral-400 hover:text-neutral-200 hover:bg-neutral-800/50'
-            }`}
-          >
-            <FileText className="w-4 h-4" />
-            <span>{t.lyricsTitle}</span>
-          </button>
+        <div className="flex flex-wrap items-center justify-between gap-2 border-b border-neutral-800 pb-3 mb-4">
+          <div className="flex items-center gap-2 overflow-x-auto">
+            <button
+              id="tab-lyrics-btn"
+              onClick={() => setActiveTab('lyrics')}
+              className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs sm:text-sm font-medium transition-all ${
+                activeTab === 'lyrics'
+                  ? 'bg-amber-500/10 text-amber-400 border border-amber-500/20'
+                  : 'text-neutral-400 hover:text-neutral-200 hover:bg-neutral-800/50'
+              }`}
+            >
+              <FileText className="w-4 h-4" />
+              <span>{t.lyricsTitle}</span>
+            </button>
 
-          <button
-            id="tab-tags-btn"
-            onClick={() => setActiveTab('tags')}
-            className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs sm:text-sm font-medium transition-all ${
-              activeTab === 'tags'
-                ? 'bg-amber-500/10 text-amber-400 border border-amber-500/20'
-                : 'text-neutral-400 hover:text-neutral-200 hover:bg-neutral-800/50'
-            }`}
-          >
-            <Tag className="w-4 h-4" />
-            <span>{t.styleTitle}</span>
-          </button>
+            <button
+              id="tab-tags-btn"
+              onClick={() => setActiveTab('tags')}
+              className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs sm:text-sm font-medium transition-all ${
+                activeTab === 'tags'
+                  ? 'bg-amber-500/10 text-amber-400 border border-amber-500/20'
+                  : 'text-neutral-400 hover:text-neutral-200 hover:bg-neutral-800/50'
+              }`}
+            >
+              <Tag className="w-4 h-4" />
+              <span>{t.styleTitle}</span>
+            </button>
 
-          <button
-            id="tab-tech-btn"
-            onClick={() => setActiveTab('tech')}
-            className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs sm:text-sm font-medium transition-all ${
-              activeTab === 'tech'
-                ? 'bg-amber-500/10 text-amber-400 border border-amber-500/20'
-                : 'text-neutral-400 hover:text-neutral-200 hover:bg-neutral-800/50'
-            }`}
-          >
-            <Code2 className="w-4 h-4" />
-            <span>{t.techTitle}</span>
-          </button>
+            <button
+              id="tab-tech-btn"
+              onClick={() => setActiveTab('tech')}
+              className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs sm:text-sm font-medium transition-all ${
+                activeTab === 'tech'
+                  ? 'bg-amber-500/10 text-amber-400 border border-amber-500/20'
+                  : 'text-neutral-400 hover:text-neutral-200 hover:bg-neutral-800/50'
+              }`}
+            >
+              <Code2 className="w-4 h-4" />
+              <span>{t.techTitle}</span>
+            </button>
+          </div>
+
+          {/* Download Lyrics .txt Button on Tab Ribbon */}
+          {song.prompt && (
+            <button
+              type="button"
+              id="tab-download-lyrics-btn"
+              onClick={handleDownloadLyrics}
+              className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold transition-all border cursor-pointer shrink-0 ${
+                downloadedLyrics
+                  ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40 shadow-sm'
+                  : 'bg-neutral-900 hover:bg-neutral-800 text-neutral-300 hover:text-white border-neutral-700/80 hover:border-amber-500/40'
+              }`}
+              title={t.downloadLyricsTooltip}
+            >
+              {downloadedLyrics ? (
+                <>
+                  <Check className="w-3.5 h-3.5 text-emerald-400" />
+                  <span className="text-emerald-300 font-semibold">{t.downloadLyricsSuccess}</span>
+                </>
+              ) : (
+                <>
+                  <Download className="w-3.5 h-3.5 text-amber-400" />
+                  <span>{t.downloadLyrics}</span>
+                </>
+              )}
+            </button>
+          )}
         </div>
 
         {/* Tab 1: Synchronized Lyrics with Audio Playback Auto-Scroll */}
@@ -933,6 +1288,8 @@ export const SongCard: React.FC<SongCardProps> = ({
             lang={lang}
             onCopy={handleCopyLyrics}
             copied={copied}
+            onDownloadLyrics={handleDownloadLyrics}
+            downloadedLyrics={downloadedLyrics}
           />
         )}
 

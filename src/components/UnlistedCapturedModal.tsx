@@ -16,7 +16,8 @@ import {
   Radio,
   FileAudio,
   Loader2,
-  Share2
+  Share2,
+  Copy
 } from 'lucide-react';
 import { ProfileSongItem, AudioFormat } from '../types';
 import { translations } from '../i18n';
@@ -54,6 +55,8 @@ export const UnlistedCapturedModal: React.FC<UnlistedCapturedModalProps> = ({
   const [isMuted, setIsMuted] = useState(false);
   const [copiedLink, setCopiedLink] = useState(false);
   const [copiedAudioUrl, setCopiedAudioUrl] = useState(false);
+  const [isLyricsExpanded, setIsLyricsExpanded] = useState(false);
+  const [copiedLyrics, setCopiedLyrics] = useState(false);
 
   useEffect(() => {
     if (!isOpen) {
@@ -332,12 +335,51 @@ export const UnlistedCapturedModal: React.FC<UnlistedCapturedModalProps> = ({
 
         {/* Prompt / Lyrics Preview if available */}
         {song.prompt && (
-          <div className="mb-5 bg-neutral-900/60 border border-neutral-800/80 rounded-2xl p-3.5 relative z-10">
-            <h5 className="text-xs font-bold text-amber-300 mb-1 flex items-center gap-1.5">
-              <Music className="w-3.5 h-3.5" />
-              <span>Prompt / Lyrics</span>
-            </h5>
-            <p className="text-xs text-neutral-300 font-mono whitespace-pre-wrap max-h-32 overflow-y-auto leading-relaxed bg-black/40 p-2.5 rounded-xl border border-neutral-800">
+          <div className="mb-5 bg-neutral-900/60 border border-neutral-800/80 rounded-2xl p-3.5 relative z-10 transition-all">
+            <div className="flex items-center justify-between mb-2">
+              <h5 className="text-xs font-bold text-amber-300 flex items-center gap-1.5">
+                <Music className="w-3.5 h-3.5" />
+                <span>{t.lyricsTitle}</span>
+              </h5>
+              <div className="flex items-center gap-1.5">
+                <button
+                  type="button"
+                  id="unlisted-copy-lyrics-btn"
+                  onClick={async () => {
+                    if (!song.prompt) return;
+                    await navigator.clipboard.writeText(song.prompt);
+                    setCopiedLyrics(true);
+                    setTimeout(() => setCopiedLyrics(false), 2000);
+                  }}
+                  className="px-2 py-0.5 rounded-lg bg-neutral-800 hover:bg-neutral-700 text-neutral-300 text-[10px] font-mono transition-colors flex items-center gap-1 cursor-pointer"
+                  title={t.copyLyrics}
+                >
+                  {copiedLyrics ? (
+                    <>
+                      <Check className="w-3 h-3 text-emerald-400" />
+                      <span className="text-emerald-300">{t.lyricsCopied}</span>
+                    </>
+                  ) : (
+                    <>
+                      <Copy className="w-3 h-3 text-amber-400" />
+                      <span>{t.copyLyrics}</span>
+                    </>
+                  )}
+                </button>
+                <button
+                  type="button"
+                  id="unlisted-expand-lyrics-btn"
+                  onClick={() => setIsLyricsExpanded(!isLyricsExpanded)}
+                  className="px-2 py-0.5 rounded-lg bg-neutral-800 hover:bg-neutral-700 text-neutral-300 text-[10px] font-mono transition-colors cursor-pointer"
+                  title={isLyricsExpanded ? t.collapseLyrics : t.showFullLyrics}
+                >
+                  {isLyricsExpanded ? t.collapseLyrics : t.showFullLyrics}
+                </button>
+              </div>
+            </div>
+            <p className={`text-xs text-neutral-300 font-mono whitespace-pre-wrap leading-relaxed bg-black/40 p-2.5 rounded-xl border border-neutral-800 transition-all ${
+              isLyricsExpanded ? 'max-h-96' : 'max-h-32'
+            } overflow-y-auto select-text`}>
               {song.prompt}
             </p>
           </div>

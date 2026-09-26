@@ -9,7 +9,8 @@ import {
   Minimize2,
   Navigation,
   Sparkles,
-  ArrowDownCircle
+  ArrowDownCircle,
+  Download
 } from 'lucide-react';
 import type { Language } from '../i18n.js';
 import { translations } from '../i18n.js';
@@ -34,6 +35,8 @@ interface SynchronizedLyricsProps {
   lang: Language;
   onCopy?: () => void;
   copied?: boolean;
+  onDownloadLyrics?: () => void;
+  downloadedLyrics?: boolean;
 }
 
 function formatTimestamp(secs: number): string {
@@ -51,7 +54,9 @@ export const SynchronizedLyrics: React.FC<SynchronizedLyricsProps> = ({
   onSeek,
   lang,
   onCopy,
-  copied = false
+  copied = false,
+  onDownloadLyrics,
+  downloadedLyrics = false
 }) => {
   const t = translations[lang];
   const [autoScroll, setAutoScroll] = useState<boolean>(true);
@@ -333,6 +338,33 @@ export const SynchronizedLyrics: React.FC<SynchronizedLyricsProps> = ({
                 <>
                   <Copy className="w-3.5 h-3.5 text-neutral-400" />
                   <span>{t.copyLyrics}</span>
+                </>
+              )}
+            </button>
+          )}
+
+          {/* Download Lyrics .txt Button */}
+          {onDownloadLyrics && (
+            <button
+              type="button"
+              id="download-lyrics-btn"
+              onClick={onDownloadLyrics}
+              className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-lg text-xs font-medium transition-all border cursor-pointer ${
+                downloadedLyrics
+                  ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40 shadow-sm'
+                  : 'bg-neutral-800 hover:bg-neutral-700 text-neutral-200 hover:text-white border-neutral-700'
+              }`}
+              title={t.downloadLyricsTooltip}
+            >
+              {downloadedLyrics ? (
+                <>
+                  <Check className="w-3.5 h-3.5 text-emerald-400" />
+                  <span className="text-emerald-300 font-semibold">{t.downloadLyricsSuccess}</span>
+                </>
+              ) : (
+                <>
+                  <Download className="w-3.5 h-3.5 text-amber-400" />
+                  <span>{t.downloadLyrics}</span>
                 </>
               )}
             </button>

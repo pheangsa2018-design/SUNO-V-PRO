@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import {
   FolderArchive,
   Music2,
@@ -19,6 +19,7 @@ import {
 import type { ProfileSongItem, AudioFormat } from '../types.js';
 import type { Language } from '../i18n.js';
 import { translations } from '../i18n.js';
+import { calculateRemainingTime } from '../utils/timeEstimator.js';
 
 export interface BatchDownloadProgress {
   percent: number;
@@ -137,6 +138,27 @@ export const BatchDownloadModal: React.FC<BatchDownloadModalProps> = ({
   const isError = progress.status === 'error';
   const isBusy = isDownloading || progress.status === 'processing' || progress.status === 'streaming' || progress.status === 'queued';
 
+  const [downloadStartTime, setDownloadStartTime] = useState<number | null>(null);
+  const [, setTick] = useState(0);
+
+  // Track start time and set up a 1-second ticker for live ETA recalculation
+  useEffect(() => {
+    if (isBusy) {
+      if (!downloadStartTime) {
+        setDownloadStartTime(Date.now());
+      }
+      const timer = setInterval(() => setTick((prev) => prev + 1), 1000);
+      return () => clearInterval(timer);
+    } else {
+      setDownloadStartTime(null);
+    }
+  }, [isBusy]);
+
+  const remainingTimeStr = useMemo(() => {
+    if (!isBusy || !downloadStartTime) return null;
+    return calculateRemainingTime(downloadStartTime, progress.percent, t, lang);
+  }, [isBusy, downloadStartTime, progress.percent, t, lang]);
+
   return (
     <div
       className="fixed inset-0 z-50 bg-black/80 backdrop-blur-md flex items-center justify-center p-3 sm:p-4 overflow-y-auto animate-in fade-in duration-200 cursor-pointer"
@@ -224,25 +246,53 @@ export const BatchDownloadModal: React.FC<BatchDownloadModalProps> = ({
                 </div>
               </div>
 
-              {/* Progress Bar */}
-              <div className="w-full h-2 bg-neutral-800 rounded-full overflow-hidden">
-                <div
-                  className="h-full bg-gradient-to-r from-amber-500 via-orange-400 to-amber-300 rounded-full transition-all duration-300 shadow-sm shadow-amber-500/50"
-                  style={{ width: `${Math.max(4, Math.min(100, progress.percent))}%` }}
-                />
+              {/* Enhanced Visual Progress Bar Container */}
+              <div className="space-y-2">
+                <div className="w-full h-3 bg-neutral-950 rounded-full overflow-hidden p-0.5 border border-neutral-700/70 shadow-inner">
+                  <div
+                    id="batch-modal-progress-bar-fill"
+                    role="progressbar"
+                    aria-valuenow={progress.percent}
+                    aria-valuemin={0}
+                    aria-valuemax={100}
+                    className="h-full bg-gradient-to-r from-amber-500 via-orange-400 to-amber-300 rounded-full transition-all duration-300 shadow-md shadow-amber-500/50"
+                    style={{ width: `${Math.max(4, Math.min(100, progress.percent))}%` }}
+                  />
+                </div>
+
+                {/* Remaining Time & Real-time ETA Stats */}
+                <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
+                  {/* Remaining Time Estimate */}
+                  <div
+                    id="batch-remaining-time-badge"
+                    className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-amber-500/15 text-amber-300 border border-amber-500/30 text-xs font-mono font-medium shadow-sm"
+                  >
+                    <Clock className="w-3.5 h-3.5 text-amber-400 animate-pulse shrink-0" />
+                    <span>
+                      <span className="text-neutral-400 font-sans text-[11px] mr-1">
+                        {t.remainingTime || (lang === 'km' ? 'ពេលវេលានៅសល់:' : 'Remaining Time:')}:
+                      </span>
+                      <strong className="text-amber-300 font-bold">{remainingTimeStr}</strong>
+                    </span>
+                  </div>
+
+                  {progress.current && progress.total && (
+                    <div className="text-[11px] font-mono text-neutral-400 flex items-center gap-1.5">
+                      <span>{progress.current} of {progress.total} tracks</span>
+                    </div>
+                  )}
+                </div>
               </div>
 
               {progress.currentTitle && (
-                <div className="text-[11px] text-neutral-400 flex items-center justify-between">
-                  <span className="truncate max-w-[240px]">
-                    {lang === 'km' ? 'បទបច្ចុប្បន្ន៖ ' : 'Current: '}
+                <div className="text-[11px] text-neutral-400 flex items-center justify-between bg-neutral-900/60 px-3 py-1.5 rounded-xl border border-neutral-800">
+                  <span className="truncate max-w-[280px]">
+                    <span className="text-neutral-500">{lang === 'km' ? 'បទបច្ចុប្បន្ន៖ ' : 'Current: '}</span>
                     <strong className="text-neutral-200">{progress.currentTitle}</strong>
                   </span>
-                  {progress.current && progress.total && (
-                    <span className="font-mono text-amber-400 shrink-0">
-                      {progress.current} / {progress.total}
-                    </span>
-                  )}
+                  <span className="text-[10px] text-amber-400/90 font-mono">
+                    {progress.receivedMb ? `${progress.receivedMb} MB` : ''}
+                  </span>
                 </div>
               )}
 

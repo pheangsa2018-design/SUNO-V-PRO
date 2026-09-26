@@ -35,7 +35,8 @@ import {
   ChevronDown,
   Settings,
   Minus,
-  ArrowUpDown
+  ArrowUpDown,
+  FileJson
 } from 'lucide-react';
 import type { PlaylistInfo, ProfileSongItem, AudioFormat, AsyncZipJobStatus } from '../types.js';
 import type { Language } from '../i18n.js';
@@ -45,6 +46,7 @@ import { BatchDownloadModal, type BatchDownloadProgress } from './BatchDownloadM
 import { ModelBadge } from './ModelBadge.js';
 import { downloadWithSmoothStream, downloadBatchZipViaForm, downloadBatchZipViaStream } from '../utils/downloadHelper.js';
 import { recordZipDownload } from '../utils/zipHistoryStorage.js';
+import { calculateRemainingTime } from '../utils/timeEstimator.js';
 
 // Fisher-Yates shuffle algorithm to randomize playlist song order
 function shuffleArray<T>(array: T[]): T[] {
@@ -74,6 +76,7 @@ export interface PlaylistZipProgress {
   downloadUrl?: string;
   error?: string;
   receivedMb?: string;
+  startTime?: number;
 }
 
 interface PlaylistViewProps {
@@ -116,6 +119,7 @@ export const PlaylistView: React.FC<PlaylistViewProps> = ({
     directUrl?: string;
   } | null>(null);
   const [copiedShare, setCopiedShare] = useState(false);
+  const [exportedJson, setExportedJson] = useState(false);
 
   // Checkbox selection state - allows selecting multiple tracks for batch ZIP download
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
@@ -161,6 +165,24 @@ export const PlaylistView: React.FC<PlaylistViewProps> = ({
     format: 'mp3',
     bitDepth: 16
   });
+
+  const [, setZipTick] = useState(0);
+
+  // Live ticker for zip remaining time
+  useEffect(() => {
+    if (!zipProgress.isActive || (zipProgress.status !== 'processing' && zipProgress.status !== 'streaming' && zipProgress.status !== 'queued')) {
+      return;
+    }
+    const timer = setInterval(() => setZipTick((t) => t + 1), 1000);
+    return () => clearInterval(timer);
+  }, [zipProgress.isActive, zipProgress.status]);
+
+  const zipRemainingTimeText = useMemo(() => {
+    if (!zipProgress.isActive || (zipProgress.status !== 'processing' && zipProgress.status !== 'streaming' && zipProgress.status !== 'queued')) {
+      return null;
+    }
+    return calculateRemainingTime(zipProgress.startTime, zipProgress.percent, t, lang);
+  }, [zipProgress.isActive, zipProgress.status, zipProgress.startTime, zipProgress.percent, t, lang]);
 
   // Audio preview state
   const [previewingSongId, setPreviewingSongId] = useState<string | null>(null);
@@ -766,7 +788,8 @@ export const PlaylistView: React.FC<PlaylistViewProps> = ({
           : `Connecting & streaming ZIP package (${targetSongs.length} tracks)...`,
       format,
       bitDepth,
-      zipFilename: suggestedZipFilename
+      zipFilename: suggestedZipFilename,
+      startTime: Date.now()
     });
 
     setDownloadToast({
@@ -962,7 +985,8 @@ export const PlaylistView: React.FC<PlaylistViewProps> = ({
       percent: 0,
       format,
       bitDepth,
-      zipFilename: `${playlistName} [${formatTag}].zip`
+      zipFilename: `${playlistName} [${formatTag}].zip`,
+      startTime: Date.now()
     });
 
     setAsyncJob({
@@ -1466,6 +1490,71 @@ export const PlaylistView: React.FC<PlaylistViewProps> = ({
     } catch {}
   };
 
+  const handleExportPlaylistJson = () => {
+    if (!playlist) return;
+
+    const cleanPlaylistName = (playlist.name || 'Suno_Playlist')
+      .replace(/[:]/g, ' - ')
+      .replace(/[<>"/\\|?*\x00-\x1F]/g, '_')
+      .replace(/\s+/g, ' ')
+      .trim();
+
+    const timestamp = new Date().toISOString();
+
+    const exportPayload = {
+      version: '1.0',
+      exportedAt: timestamp,
+      generator: 'Suno Downloader Pro',
+      playlist: {
+        id: playlist.id,
+        name: playlist.name,
+        description: playlist.description || '',
+        imageUrl: playlist.imageUrl || '',
+        userDisplayName: playlist.userDisplayName || '',
+        userHandle: playlist.userHandle || '',
+        userAvatarUrl: playlist.userAvatarUrl || '',
+        songCount: playlist.songs.length,
+        totalDuration: playlist.totalDuration || 0,
+        totalDurationFormatted: formatDuration(playlist.totalDuration),
+        sourceUrl: playlist.sourceUrl,
+        isProfilePlaylist: !!playlist.isProfilePlaylist
+      },
+      tracks: playlist.songs.map((song, idx) => ({
+        index: idx + 1,
+        id: song.id,
+        title: song.title,
+        duration: song.duration,
+        durationFormatted: formatDuration(song.duration),
+        createdAt: song.createdAt,
+        displayName: song.displayName || playlist.userDisplayName,
+        handle: song.handle || playlist.userHandle,
+        imageUrl: song.imageUrl,
+        audioUrl: song.audioUrl || `/api/song/download/${song.id}?format=mp3`,
+        sourceUrl: `https://suno.com/song/${song.id}`,
+        tags: song.tags || '',
+        modelName: song.modelName || '',
+        prompt: song.prompt || '',
+        isPublic: song.isPublic ?? true,
+        isUnlisted: song.isUnlisted ?? false,
+        capturedAt: song.capturedAt || undefined
+      }))
+    };
+
+    const jsonString = JSON.stringify(exportPayload, null, 2);
+    const blob = new Blob([jsonString], { type: 'application/json;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `${cleanPlaylistName}_playlist_backup.json`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+
+    setExportedJson(true);
+    setTimeout(() => setExportedJson(false), 2500);
+  };
+
   return (
     <div className={`w-full max-w-5xl mx-auto space-y-6 ${currentPlayingSong ? 'pb-32 sm:pb-36' : ''}`}>
       {/* Top Bar Navigation */}
@@ -1898,6 +1987,32 @@ export const PlaylistView: React.FC<PlaylistViewProps> = ({
                 )}
               </button>
 
+              {/* Export Playlist JSON Backup Button */}
+              <button
+                type="button"
+                id="export-playlist-json-btn"
+                onClick={handleExportPlaylistJson}
+                disabled={playlist.songs.length === 0}
+                className={`inline-flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold transition-all border cursor-pointer active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed ${
+                  exportedJson
+                    ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/50 shadow-sm font-bold'
+                    : 'bg-neutral-800 hover:bg-neutral-700 text-neutral-300 hover:text-white border-neutral-700 hover:border-amber-500/40'
+                }`}
+                title={t.exportPlaylistJsonTooltip}
+              >
+                {exportedJson ? (
+                  <>
+                    <Check className="w-3.5 h-3.5 text-emerald-400" />
+                    <span className="text-emerald-300 font-bold">{t.exportPlaylistJsonSuccess}</span>
+                  </>
+                ) : (
+                  <>
+                    <FileJson className="w-3.5 h-3.5 text-amber-400" />
+                    <span>{t.exportPlaylistJson}</span>
+                  </>
+                )}
+              </button>
+
               <a
                 href={playlist.sourceUrl}
                 target="_blank"
@@ -2291,11 +2406,17 @@ export const PlaylistView: React.FC<PlaylistViewProps> = ({
             </div>
 
             <div className="flex items-center gap-3 shrink-0 self-end sm:self-center">
-              {/* Percentage Counter */}
-              <div className="text-right">
-                <span className="text-2xl sm:text-3xl font-black text-amber-400 font-mono tracking-tight">
+              {/* Percentage Counter and Estimated Remaining Time */}
+              <div className="text-right flex flex-col items-end">
+                <span className="text-2xl sm:text-3xl font-black text-amber-400 font-mono tracking-tight leading-none">
                   {zipProgress.percent}%
                 </span>
+                {zipRemainingTimeText && (
+                  <span className="text-[11px] font-mono text-amber-300/90 flex items-center gap-1 mt-1 bg-amber-500/10 px-2 py-0.5 rounded border border-amber-500/20">
+                    <Clock className="w-3 h-3 text-amber-400 animate-pulse shrink-0" />
+                    <span>{zipRemainingTimeText}</span>
+                  </span>
+                )}
               </div>
 
               {/* Action Buttons: Cancel, Open Modal, Dismiss */}
@@ -2390,6 +2511,20 @@ export const PlaylistView: React.FC<PlaylistViewProps> = ({
               </div>
 
               <div className="flex items-center gap-3 shrink-0 font-mono text-[11px]">
+                {zipRemainingTimeText && (
+                  <div
+                    id="playlist-zip-remaining-time-badge"
+                    className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-amber-500/15 text-amber-300 border border-amber-500/30 text-[11px] font-mono shadow-sm"
+                  >
+                    <Clock className="w-3 h-3 text-amber-400 animate-pulse shrink-0" />
+                    <span>
+                      <span className="text-neutral-400 font-sans text-[10px] mr-1">
+                        {t.remainingTime || (lang === 'km' ? 'ពេលវេលានៅសល់:' : 'Remaining Time:')}:
+                      </span>
+                      <strong className="text-amber-300 font-bold">{zipRemainingTimeText}</strong>
+                    </span>
+                  </div>
+                )}
                 {zipProgress.receivedMb && (
                   <span className="text-amber-300/90">{zipProgress.receivedMb} MB</span>
                 )}
@@ -3368,6 +3503,32 @@ export const PlaylistView: React.FC<PlaylistViewProps> = ({
             >
               <Play className={`w-3.5 h-3.5 fill-current ${isShuffleActive && isPlaying ? 'text-neutral-950' : 'text-amber-400'}`} />
               <span>{t.shufflePlay}</span>
+            </button>
+
+            {/* Export JSON Button in Tracks Toolbar */}
+            <button
+              type="button"
+              id="export-playlist-tracks-header-btn"
+              onClick={handleExportPlaylistJson}
+              disabled={playlist.songs.length === 0}
+              className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold transition-all border cursor-pointer active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed ${
+                exportedJson
+                  ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/50 shadow-sm font-bold'
+                  : 'bg-neutral-900 hover:bg-neutral-800 text-neutral-300 hover:text-white border-neutral-700/80 hover:border-amber-500/40'
+              }`}
+              title={t.exportPlaylistJsonTooltip}
+            >
+              {exportedJson ? (
+                <>
+                  <Check className="w-3.5 h-3.5 text-emerald-400" />
+                  <span className="text-emerald-300 font-bold">{lang === 'km' ? 'បាននាំចេញ!' : 'Exported!'}</span>
+                </>
+              ) : (
+                <>
+                  <FileJson className="w-3.5 h-3.5 text-amber-400" />
+                  <span>{lang === 'km' ? 'នាំចេញ JSON' : 'Export JSON'}</span>
+                </>
+              )}
             </button>
           </div>
 
