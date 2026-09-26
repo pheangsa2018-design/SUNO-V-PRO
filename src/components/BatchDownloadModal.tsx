@@ -78,6 +78,12 @@ export const BatchDownloadModal: React.FC<BatchDownloadModalProps> = ({
     return `${base} - ${selectedSongs.length} Tracks`;
   });
   const [showTrackList, setShowTrackList] = useState(false);
+  const [downloadStartTime, setDownloadStartTime] = useState<number | null>(null);
+  const [, setTick] = useState(0);
+
+  const isCompleted = progress.status === 'ready';
+  const isError = progress.status === 'error';
+  const isBusy = isDownloading || progress.status === 'processing' || progress.status === 'streaming' || progress.status === 'queued';
 
   // Sync format and custom name when modal opens or songs change
   useEffect(() => {
@@ -104,6 +110,24 @@ export const BatchDownloadModal: React.FC<BatchDownloadModalProps> = ({
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [isOpen, isDownloading, onClose, onCancelDownload]);
+
+  // Track start time and set up a 1-second ticker for live ETA recalculation
+  useEffect(() => {
+    if (isBusy) {
+      if (!downloadStartTime) {
+        setDownloadStartTime(Date.now());
+      }
+      const timer = setInterval(() => setTick((prev) => prev + 1), 1000);
+      return () => clearInterval(timer);
+    } else {
+      setDownloadStartTime(null);
+    }
+  }, [isBusy]);
+
+  const remainingTimeStr = useMemo(() => {
+    if (!isBusy || !downloadStartTime) return null;
+    return calculateRemainingTime(downloadStartTime, progress.percent, t, lang);
+  }, [isBusy, downloadStartTime, progress.percent, t, lang]);
 
   if (!isOpen) return null;
 
@@ -133,31 +157,6 @@ export const BatchDownloadModal: React.FC<BatchDownloadModalProps> = ({
       mode: downloadMode
     });
   };
-
-  const isCompleted = progress.status === 'ready';
-  const isError = progress.status === 'error';
-  const isBusy = isDownloading || progress.status === 'processing' || progress.status === 'streaming' || progress.status === 'queued';
-
-  const [downloadStartTime, setDownloadStartTime] = useState<number | null>(null);
-  const [, setTick] = useState(0);
-
-  // Track start time and set up a 1-second ticker for live ETA recalculation
-  useEffect(() => {
-    if (isBusy) {
-      if (!downloadStartTime) {
-        setDownloadStartTime(Date.now());
-      }
-      const timer = setInterval(() => setTick((prev) => prev + 1), 1000);
-      return () => clearInterval(timer);
-    } else {
-      setDownloadStartTime(null);
-    }
-  }, [isBusy]);
-
-  const remainingTimeStr = useMemo(() => {
-    if (!isBusy || !downloadStartTime) return null;
-    return calculateRemainingTime(downloadStartTime, progress.percent, t, lang);
-  }, [isBusy, downloadStartTime, progress.percent, t, lang]);
 
   return (
     <div
